@@ -2,6 +2,7 @@ import React from 'react';
 import { Player, Ancestor } from '../types';
 import { Crown, Trophy, Sparkles, Star, ShieldCheck } from 'lucide-react';
 import { getLegacyRank } from './HomeTab';
+import { formatOvr } from '../utils/format';
 
 interface LegacyTabProps {
   player: Player;
@@ -44,7 +45,7 @@ export const LegacyTab: React.FC<LegacyTabProps> = ({ player, ancestors, legacyS
             <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-[#2ECC71] text-black">
               Gen {player.generation || 1} • ACTIVE DYNAST
             </span>
-            <span className="text-xs font-black font-mono text-[#2ECC71]">{player.ovr} OVR</span>
+            <span className="text-xs font-black font-mono text-[#2ECC71]">{formatOvr(player.ovr)} OVR</span>
           </div>
 
           <div className="flex items-center justify-between">
@@ -76,7 +77,7 @@ export const LegacyTab: React.FC<LegacyTabProps> = ({ player, ancestors, legacyS
                 <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded bg-[#1E1E1E] text-white/60 border border-white/10">
                   Gen {ancestor.generation} • RETIRED ({ancestor.startYear}-{ancestor.retireYear})
                 </span>
-                <span className="text-xs font-black font-mono text-[#F1C40F]">Peak {ancestor.peakOvr} OVR</span>
+                <span className="text-xs font-black font-mono text-[#F1C40F]">Peak {formatOvr(ancestor.peakOvr)} OVR</span>
               </div>
 
               <div className="flex items-center justify-between">
@@ -153,7 +154,7 @@ export const LegacyTab: React.FC<LegacyTabProps> = ({ player, ancestors, legacyS
               <div key={idx} className="bg-[#F1C40F]/10 border border-[#F1C40F]/30 p-3 rounded-xl flex items-center justify-between text-xs">
                 <div>
                   <span className="font-bold text-[#F1C40F] text-sm block">{hof.name}</span>
-                  <span className="text-[10px] text-white/50">Gen {hof.generation} • Peak OVR {hof.peakOvr}</span>
+                  <span className="text-[10px] text-white/50">Gen {hof.generation} • Peak OVR {formatOvr(hof.peakOvr)}</span>
                 </div>
                 <div className="text-right">
                   <Star className="w-4 h-4 text-[#F1C40F] inline-block mb-1" />

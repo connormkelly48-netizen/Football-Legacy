@@ -3,6 +3,7 @@ import { Player } from '../types';
 import { Trophy, Zap, Shield, Sparkles, UserCheck, Flame, Rocket } from 'lucide-react';
 import { sound } from '../utils/audio';
 import { googlePlayBilling } from '../utils/googlePlayBilling';
+import { formatOvr } from '../utils/format';
 
 interface HomeTabProps {
   player: Player;
@@ -113,7 +114,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
           </div>
 
           <div className="text-right bg-[#1E1E1E] px-3 py-1.5 rounded-xl border border-white/5">
-            <div className="text-2xl font-black font-mono text-[#2ECC71] leading-none">{player.ovr}</div>
+            <div className="text-2xl font-black font-mono text-[#2ECC71] leading-none">{formatOvr(player.ovr)}</div>
             <div className="text-[9px] text-white/40 font-bold uppercase tracking-widest mt-0.5">OVR</div>
           </div>
         </div>

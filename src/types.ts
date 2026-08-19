@@ -23,8 +23,12 @@ export interface SeasonRecord {
   oldOvr: number;
   newOvr: number;
   ovrChange: number;
-  trophyWon: string | null;
+  /** Every trophy won this season — a genuinely elite club in a great season can win more than one. */
+  trophiesWon: string[];
   awardsWon: string[];
+  /** Present only on seasons with a moderate or severe injury. */
+  injurySeverity?: 'MINOR' | 'MODERATE' | 'SEVERE';
+  injuryDescription?: string;
 }
 
 export type ClubPhilosophy = 
@@ -43,7 +47,13 @@ export type ClubPhilosophy =
   | 'PROVEN_STARS'
   | 'YOUTH_ACADEMY'
   | 'BALANCED_MIX'
-  | 'VETERAN_EXPERIENCE';
+  | 'VETERAN_EXPERIENCE'
+  // Added for the full 2026/27 European database (Prompt 2):
+  | 'ELITE_RECRUITMENT'
+  | 'POSSESSION_FOOTBALL'
+  | 'COUNTER_ATTACKING'
+  | 'DEFENSIVE_STRUCTURE'
+  | 'LOCAL_TALENT_DEVELOPMENT';
 
 export type HiddenTrait = 
   | 'LOYAL'
@@ -66,7 +76,7 @@ export type HiddenTrait =
   | 'SETTLED'
   | 'ADVENTURER';
 
-export type GameMode = 'CAREER' | 'QUICK_FIRE';
+export type GameMode = 'CAREER' | 'QUICK_FIRE' | 'LEGEND';
 
 export type OwnerPersonality = 
   | 'YOUTH_INVESTOR'
@@ -133,7 +143,61 @@ export interface Player {
   isTransferListed?: boolean;
   hiddenTraits?: HiddenTrait[];
   gameMode?: GameMode;
+  isLegendMode?: boolean;
+  realBaseline?: any;
   supporterBadge?: string;
+  /**
+   * Hidden potential ceiling, rolled once early in a career and never
+   * revealed directly to the player. Growth tapers hard as OVR approaches
+   * this number — this is what makes most careers plateau in the 60s-70s
+   * rather than every player drifting toward world-class given enough
+   * seasons. See rollCareerCeiling() in quickfireEngine.ts.
+   */
+  careerCeiling?: number;
+
+  /**
+   * Set only while the player is out on loan. Holds the club (and colors)
+   * they'll return to once the loan season ends, unless the loan club
+   * rolls to make the move permanent. Cleared as soon as the loan is
+   * resolved, whichever way it goes.
+   */
+  loanParentClub?: string;
+  loanParentClubColor?: string;
+  loanParentClubSecondaryColor?: string;
+
+  /**
+   * Consecutive-season Ballon d'Or win count, reset to 0 the moment a
+   * season passes without winning. Used to apply a "voter fatigue"
+   * penalty in calculateBallonDor() — winning it 8-9 times in a row is
+   * not something even real all-time greats do, so repeat wins get
+   * progressively harder to keep the award meaningful.
+   */
+  ballonDorStreak?: number;
+
+  /**
+   * Consecutive seasons spent at the CURRENT club (STAY streak). Resets
+   * to 0 on any permanent transfer (loans don't reset it — you're still
+   * contracted to the parent club). Drives the loyalty/legend system:
+   * long, unbroken tenure builds real standing with the fans even if
+   * trophies stay scarce, the Totti path.
+   */
+  currentClubTenure?: number;
+
+  /**
+   * Set when a permanent transfer away from a long-settled club rolls
+   * badly (see rollDepartureRisk in quickfireEngine.ts). While this is
+   * above 0, growth is further dampened and the offers you receive skew
+   * toward smaller, safer clubs — the "circling smaller clubs, regretting
+   * the decision" spiral. Decrements by 1 each season until it clears.
+   */
+  unsettledSeasonsRemaining?: number;
+
+  /**
+   * True once the young-prospect-stuck-behind-the-first-team crossroads
+   * event has fired for this player, so it only ever asks once per
+   * career — "fight for your place, or leave for regular football."
+   */
+  crossroadsResolved?: boolean;
 }
 
 export interface QuickFireSummaryData {
@@ -262,6 +326,19 @@ export interface Superstar {
   peakOvr: number;
   nationality?: string;
   isRetired?: boolean;
+  /**
+   * 0-1, how likely this player is to stay put rather than transfer.
+   * Hand-tuned for named players to reflect real tendencies (a homegrown
+   * one-club type vs. someone already known for chasing a move) — this is
+   * what makes Mbappé-style players plausible to leave while a
+   * Musiala-style player might stay for their whole career. Regens get a
+   * randomized value so no future superstar's career shape is predictable.
+   */
+  loyalty?: number;
+  /** Seasons at current club — resets on transfer, drives rising wanderlust over a long stay. */
+  yearsAtClub?: number;
+  /** Consecutive seasons at 86+ OVR — drives regression-to-mean pressure so a decade of sustained elite form stays genuinely rare, not the norm. */
+  eliteStreak?: number;
   retiredYear?: number;
   isRegen?: boolean;
 }
@@ -278,4 +355,20 @@ export interface SaveSlot {
   newsFeed: WorldHeadlinePackage[];
   dynamicLeagues: League[];
   worldSuperstars?: Superstar[];
+  /**
+   * Evolved club state (ratings, ownership, finances) at time of save.
+   * Without this, club evolution from evolveWorldClubsAndOwners was
+   * silently lost on reload — every session restarted from the database's
+   * static baseline. Optional for backward compatibility with saves from
+   * before this field existed; loader falls back to the baseline database.
+   */
+  dynamicClubs?: Club[];
+  /** Which football database this save was created against, e.g. "2026_27". */
+  databaseId?: string;
+  /** Database manifest version at time of save (see DatabaseManifest.version). */
+  databaseVersion?: string;
+  /** DLC database IDs active when this save was created, beyond the base database. */
+  installedDLC?: string[];
+  /** App/game version this save was created with, for future migration logic. */
+  gameVersion?: string;
 }

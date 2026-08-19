@@ -3,7 +3,7 @@ import { Position, StoryPreset, Player, GameMode } from '../types';
 import { CLUBS_2026, LEAGUES_2026, getClubByName } from '../data/database2026';
 import { UserPlus, Sparkles, ChevronRight, Dices, Flame, Shield } from 'lucide-react';
 import { sound } from '../utils/audio';
-import { generateHiddenTraits } from '../utils/quickfireEngine';
+import { generateHiddenTraits, rollCareerCeiling } from '../utils/quickfireEngine';
 
 interface CreationModalProps {
   generation: number;
@@ -54,16 +54,37 @@ const LAST_NAMES_BY_NATION: Record<string, string[]> = {
 
 const COUNTRIES = Array.from(new Set(LEAGUES_2026.map(l => l.country)));
 
+// Module-level so they're available to lazy useState initializers below —
+// previously these lived inside the component body, which meant the
+// starting name had to be a hardcoded literal ('Leo Vance' every time)
+// rather than actually randomized on mount.
+const getRandomFirstName = (nation: string) => {
+  const pool = FIRST_NAMES_BY_NATION[nation] || FIRST_NAMES_BY_NATION['England'];
+  return pool[Math.floor(Math.random() * pool.length)];
+};
+
+const getRandomLastName = (nation: string) => {
+  const pool = LAST_NAMES_BY_NATION[nation] || LAST_NAMES_BY_NATION['England'];
+  return pool[Math.floor(Math.random() * pool.length)];
+};
+
 export const CreationModal: React.FC<CreationModalProps> = ({
   generation,
   fatherPlayer,
   onComplete
 }) => {
   const isChild = generation > 1 && fatherPlayer;
+  const initialNationality = isChild ? fatherPlayer.nationality : 'England';
 
-  const [firstName, setFirstName] = useState(isChild ? 'Marcus' : 'Leo');
-  const [lastName, setLastName] = useState(isChild ? fatherPlayer.lastName : 'Vance');
-  const [nationality, setNationality] = useState(isChild ? fatherPlayer.nationality : 'England');
+  // Randomized on every mount — previously hardcoded to 'Leo Vance' (or
+  // 'Marcus' + father's surname for a child) as the starting preset, so
+  // every new career opened with the same default name until the player
+  // manually hit the dice button. A child still inherits the father's
+  // actual surname (that's the legacy/family feature, not a bug) — only
+  // the first name randomizes in that case.
+  const [firstName, setFirstName] = useState(() => getRandomFirstName(initialNationality));
+  const [lastName, setLastName] = useState(() => isChild ? fatherPlayer.lastName : getRandomLastName(initialNationality));
+  const [nationality, setNationality] = useState(initialNationality);
   const [position, setPosition] = useState<Position>('ST');
   const [storyPreset, setStoryPreset] = useState<StoryPreset>('wonderkid');
 
@@ -73,7 +94,7 @@ export const CreationModal: React.FC<CreationModalProps> = ({
 
   // Cascading Country -> League -> Club
   const [selectedCountry, setSelectedCountry] = useState<string>('England');
-  const [selectedLeagueId, setSelectedLeagueId] = useState<string>('ENG_1');
+  const [selectedLeagueId, setSelectedLeagueId] = useState<string>('ENG_PREM');
   const [selectedClubName, setSelectedClubName] = useState<string>('Manchester City');
 
   // Helper functions for cascading dropdowns
@@ -102,16 +123,6 @@ export const CreationModal: React.FC<CreationModalProps> = ({
   };
 
   // --- Randomise Handlers ---
-  const getRandomFirstName = (nation: string) => {
-    const pool = FIRST_NAMES_BY_NATION[nation] || FIRST_NAMES_BY_NATION['England'];
-    return pool[Math.floor(Math.random() * pool.length)];
-  };
-
-  const getRandomLastName = (nation: string) => {
-    const pool = LAST_NAMES_BY_NATION[nation] || LAST_NAMES_BY_NATION['England'];
-    return pool[Math.floor(Math.random() * pool.length)];
-  };
-
   const handleRandomName = () => {
     sound.playTap();
     setFirstName(getRandomFirstName(nationality));
@@ -239,7 +250,12 @@ export const CreationModal: React.FC<CreationModalProps> = ({
       motmAwards: 0,
       goldenShoesWon: 0,
       ballonDorsWon: 0,
-      hiddenTraits: generateHiddenTraits()
+      hiddenTraits: generateHiddenTraits(),
+      // Rolled once here and never revealed directly — the same hidden
+      // ceiling system Quick-Fire uses. Starting at a huge club doesn't
+      // change these odds; roughly 80% of careers cap out at "solid pro"
+      // or below regardless of starting circumstances.
+      careerCeiling: rollCareerCeiling()
     };
 
     onComplete(newPlayer);

@@ -27,11 +27,13 @@ import { AwardsModal } from './components/AwardsModal';
 import { TransferModal } from './components/TransferModal';
 import { RetirementModal } from './components/RetirementModal';
 import { QuickFireSummaryModal } from './components/QuickFireSummaryModal';
+import { MainMenuModal } from './components/MainMenuModal';
+import { LegendComparisonModal } from './components/LegendComparisonModal';
 
-import { runFullQuickFireCareer } from './utils/quickfireEngine';
+import { runFullQuickFireCareer, rollSeasonTrophies, computeSquadFitMultiplier, rollAgeRandomComponent, resolveLoanSpell, rollCareerCeiling, checkLoyaltyMilestone, rollDepartureRisk } from './utils/quickfireEngine';
 
-import { getClubByName, generateClubOffers, LEAGUES_2026 } from './data/database2026';
-import { triggerRandomEvent } from './data/events';
+import { getClubByName, generateClubOffers, LEAGUES_2026, ACTIVE_DATABASE_ID, ACTIVE_DATABASE_VERSION } from './data/database2026';
+import { triggerRandomEvent, checkWonderkidCrossroads } from './data/events';
 import { simulateInternationalDuty, IntSimResult } from './data/international';
 import {
   timelineFeed,
@@ -52,6 +54,7 @@ import {
 import {
   globalNewsFeed,
   dynamicLeagues,
+  dynamicClubs,
   setWorldFeed,
   generateSeasonHeadlines
 } from './data/world';
@@ -71,7 +74,9 @@ export default function App() {
   const [superstars, setSuperstars] = useState<Superstar[]>(INITIAL_SUPERSTARS);
 
   // Modals Flow
+  const [showMainMenuModal, setShowMainMenuModal] = useState<boolean>(false);
   const [showCreationModal, setShowCreationModal] = useState<boolean>(false);
+  const [showLegendComparison, setShowLegendComparison] = useState<boolean>(false);
   const [activeRandomEvent, setActiveRandomEvent] = useState<RandomEvent | null>(null);
   const [pendingSeasonData, setPendingSeasonData] = useState<{
     seasonRecord: SeasonRecord;
@@ -97,6 +102,9 @@ export default function App() {
       try {
         const parsed: SaveSlot = JSON.parse(rawAuto);
         if (parsed.player) {
+          if (parsed.databaseId && parsed.databaseId !== ACTIVE_DATABASE_ID) {
+            console.warn(`[save] This save was created against database "${parsed.databaseId}" but the active database is "${ACTIVE_DATABASE_ID}". Loading anyway — club/league references may not fully match until the matching database DLC is installed.`);
+          }
           setPlayer(parsed.player);
           setAncestors(parsed.legacyTree || []);
           setLegacyScore(parsed.legacyScore || 0);
@@ -112,15 +120,30 @@ export default function App() {
           } else {
             setSuperstars(INITIAL_SUPERSTARS);
           }
-          setWorldFeed(parsed.newsFeed || [], parsed.dynamicLeagues || LEAGUES_2026);
+          setWorldFeed(parsed.newsFeed || [], parsed.dynamicLeagues || LEAGUES_2026, parsed.dynamicClubs);
           return;
         }
       } catch {
         // Fallback to fresh setup
       }
     }
-    setShowCreationModal(true);
+    setShowMainMenuModal(true);
   }, []);
+
+  // Handle Legend Career Selection
+  const handleSelectLegendCareer = (legendPlayer: Player) => {
+    setPlayer(legendPlayer);
+    setShowMainMenuModal(false);
+    setShowCreationModal(false);
+    addTimelineEntry(
+      legendPlayer,
+      'MILESTONE',
+      'Legend Career Kickoff',
+      `Stepped into the boots of ${legendPlayer.name}, starting professional journey at ${legendPlayer.club} in ${legendPlayer.year}.`
+    );
+    setLocalTimeline([...timelineFeed]);
+    saveToAutoSave(legendPlayer, 0, []);
+  };
 
   // Auto-save helper
   const saveToAutoSave = (updatedPlayer: Player, updatedScore: number, updatedAncestors: Ancestor[], currentSuperstars?: Superstar[]) => {
@@ -135,7 +158,12 @@ export default function App() {
       timeline: timelineFeed,
       newsFeed: globalNewsFeed,
       dynamicLeagues: leagues,
-      worldSuperstars: currentSuperstars || superstars
+      worldSuperstars: currentSuperstars || superstars,
+      dynamicClubs: dynamicClubs,
+      databaseId: ACTIVE_DATABASE_ID,
+      databaseVersion: ACTIVE_DATABASE_VERSION,
+      installedDLC: [],
+      gameVersion: '0.3.0',
     };
     localStorage.setItem('football_legacy_autosave', JSON.stringify(autoObj));
   };
@@ -166,23 +194,13 @@ function calculateDynamicOvrChange(
   assists: number,
   rating: number
 ): number {
-  // 1. Age Bounds (Feature #6)
-  let minBound = -5;
-  let maxBound = 7;
-
-  if (player.age <= 20) {
-    minBound = -5;
-    maxBound = 7;
-  } else if (player.age <= 24) {
-    minBound = -5;
-    maxBound = 5;
-  } else if (player.age <= 32) {
-    minBound = -3;
-    maxBound = 3;
-  } else {
-    minBound = -5;
-    maxBound = 2;
-  }
+  // 1. Age-banded random component — shared with Quick-Fire mode via
+  // rollAgeRandomComponent(), so a player of a given age gets the same
+  // underlying variance in both game modes. This also replaces the old
+  // flat "random noise" term below, since the age roll already supplies
+  // realistic random variance (wider for young players, narrower/more
+  // negative-skewed for veterans).
+  const randomComponent = rollAgeRandomComponent(player.age);
 
   // 2. Performance Factor (-3 to +4)
   let perfBonus = 0;
@@ -217,13 +235,19 @@ function calculateDynamicOvrChange(
     leagueQualityDelta -= 1;
   }
 
-  // 4. High OVR Soft Resistance (88+ hard to maintain unless top tier)
-  let eliteResistance = 0;
-  if (player.ovr >= 92) {
-    eliteResistance = -2;
-  } else if (player.ovr >= 88) {
-    eliteResistance = -1;
-  }
+  // 4. Hidden Career Ceiling Taper — the actual "destined for it or not"
+  // mechanic. Rolled once at creation (rollCareerCeiling(), same
+  // distribution Quick-Fire uses — ~80% of careers cap at "solid pro" or
+  // below) and never revealed. This has to be multiplicative, not another
+  // flat additive penalty: an additive penalty can simply be outmuscled
+  // by stacking the league-quality/performance/age bonuses above (which
+  // is exactly how a big-club start alone used to buy its way to world
+  // class regardless of ceiling). Scaling down whatever positive growth
+  // is left, the closer to (or past) the ceiling you are, makes it a real
+  // wall instead of a headwind. Decline is never dampened — falling off
+  // hits at full strength no matter the ceiling.
+  const ceiling = player.careerCeiling ?? 80;
+  const distanceToCeiling = ceiling - player.ovr; // + = genuine room left, - = already past it
 
   // 5. Playing Time
   let timeFactor = 0;
@@ -236,14 +260,34 @@ function calculateDynamicOvrChange(
     traitBonus += 1;
   }
 
-  // 7. Random Career Noise (-2 to +2)
-  const randomNoise = Math.floor(Math.random() * 5) - 2;
+  // 7. Unsettled Penalty — the real downside of a departure risk roll
+  // gone badly (see rollDepartureRisk). Growth is further dampened while
+  // this is active, on top of everything else, representing genuinely
+  // struggling to find your feet at a new club.
+  const unsettledPenalty = (player.unsettledSeasonsRemaining ?? 0) > 0 ? -2 : 0;
 
-  // Raw Delta
-  let calculatedDelta = perfBonus + leagueQualityDelta + timeFactor + traitBonus + eliteResistance + randomNoise;
+  // Total: age-band random roll (replaces old per-age hard clamp + flat
+  // noise term) plus this mode's circumstance/performance factors, which
+  // Quick-Fire doesn't need in the same form since its own AI-driven
+  // transfer logic (squad-fit multiplier, consecutive-poor-fit listing)
+  // already accounts for league/club mismatch elsewhere.
+  let calculatedDelta = randomComponent + perfBonus + leagueQualityDelta + timeFactor + traitBonus + unsettledPenalty;
 
-  // Enforce Strict Age Bounds
-  calculatedDelta = Math.max(minBound, Math.min(maxBound, calculatedDelta));
+  if (calculatedDelta > 0) {
+    let growthMultiplier = 1;
+    if (distanceToCeiling <= -8) growthMultiplier = 0;      // hard wall — no further growth possible
+    else if (distanceToCeiling <= -4) growthMultiplier = 0.1;
+    else if (distanceToCeiling <= -1) growthMultiplier = 0.15;
+    else if (distanceToCeiling <= 2) growthMultiplier = 0.3;
+    else if (distanceToCeiling <= 5) growthMultiplier = 0.55;
+    calculatedDelta *= growthMultiplier;
+  }
+
+  // Safety bound only — the age-band roll already supplies age-appropriate
+  // variance, so this just prevents an extreme stack of every circumstance
+  // factor landing the same season from producing an absurd single-season
+  // swing. Global OVR is clamped separately to [48, 99] where this is used.
+  calculatedDelta = Math.max(-12, Math.min(12, calculatedDelta));
 
   return calculatedDelta;
 }
@@ -252,6 +296,13 @@ function calculateDynamicOvrChange(
   const handleSimSeason = () => {
     if (!player) return;
 
+    // Backward-compat lazy init: saves created before the career-ceiling
+    // system existed won't have this rolled yet. Roll it once here so it
+    // persists from this point on, same fallback pattern Quick-Fire uses.
+    if (player.careerCeiling === undefined) {
+      player.careerCeiling = rollCareerCeiling();
+    }
+
     if (player.gameMode === 'QUICK_FIRE') {
       sound.playSimStart();
       const result = runFullQuickFireCareer(player, superstars, [], leagues);
@@ -259,6 +310,8 @@ function calculateDynamicOvrChange(
       setSuperstars(result.superstars);
       setLocalTimeline(result.timeline);
       setTimelineFeed(result.timeline);
+      setWorldFeed(result.newsFeed, leagues);
+      setNewsFeed(result.newsFeed);
       setQuickFireSummary(result.summary);
       setShowQuickFireSummaryModal(true);
       const newScore = legacyScore + result.summary.legacyScore;
@@ -268,9 +321,10 @@ function calculateDynamicOvrChange(
     }
 
     const club = getClubByName(player.club);
+    const fitMultiplier = computeSquadFitMultiplier(player.ovr, club.rating);
 
     // Calculate match stats
-    const apps = Math.floor(Math.random() * 10) + 28; // 28 to 38 apps
+    const apps = Math.round((Math.floor(Math.random() * 10) + 28) * fitMultiplier); // 28 to 38 apps, scaled by squad fit
 
     let posGoalFactor = 0.1;
     if (player.position === 'ST') posGoalFactor = 0.65;
@@ -279,20 +333,18 @@ function calculateDynamicOvrChange(
     else if (player.position === 'CB' || player.position === 'LB' || player.position === 'RB') posGoalFactor = 0.08;
     else if (player.position === 'GK') posGoalFactor = 0.0;
 
-    const goals = player.position === 'GK' ? 0 : Math.floor(apps * posGoalFactor * (player.ovr / 72) * (Math.random() * 0.7 + 0.65));
-    const assists = player.position === 'GK' ? 0 : Math.floor(apps * 0.22 * (player.ovr / 75) * (Math.random() * 0.8 + 0.5));
+    const goals = player.position === 'GK' ? 0 : Math.round(apps * posGoalFactor * (player.ovr / 72) * (Math.random() * 0.7 + 0.65) * fitMultiplier);
+    const assists = player.position === 'GK' ? 0 : Math.round(apps * 0.22 * (player.ovr / 75) * (Math.random() * 0.8 + 0.5) * fitMultiplier);
     const rating = Math.round((7.0 + (goals * 0.08) + (assists * 0.05) + (player.ovr * 0.01) + (Math.random() * 0.4 - 0.2)) * 100) / 100;
 
     // Calculate Dynamic OVR Delta
     const baseDelta = calculateDynamicOvrChange(player, club.rating, apps, goals, assists, rating);
 
-    // Check for Club Trophy
-    let trophyWon: string | null = null;
-    if (club.rating >= 82 && rating >= 7.3 && Math.random() < 0.35) {
-      trophyWon = club.rating >= 86 ? "UEFA Champions League" : "Domestic League Title";
-    } else if (Math.random() < 0.15) {
-      trophyWon = "Domestic Cup Trophy";
-    }
+    // Check for Club Trophies — rolled per-competition, independently, so
+    // more than one is genuinely possible (a treble is rare but real),
+    // and a top-rated club can win the league itself, not only continental
+    // competitions.
+    const trophiesWon = rollSeasonTrophies(club.rating);
 
     // International Duty
     const intResult = simulateInternationalDuty(player);
@@ -314,7 +366,7 @@ function calculateDynamicOvrChange(
       oldOvr,
       newOvr,
       ovrChange,
-      trophyWon,
+      trophiesWon,
       awardsWon: []
     };
 
@@ -327,7 +379,7 @@ function calculateDynamicOvrChange(
       goals,
       assists,
       avgRating: rating,
-      trophyWon: trophyWon !== null,
+      trophyWon: trophiesWon.length > 0,
       intTrophyWon: intResult.trophyWon !== null,
       apps
     }, updatedSuperstars);
@@ -352,8 +404,11 @@ function calculateDynamicOvrChange(
       updatedSuperstars
     });
 
-    // Check for Random Event Trigger
-    const event = triggerRandomEvent(player);
+    // Check for Random Event Trigger — the wonderkid crossroads takes
+    // priority over the normal weighted pool so it reliably fires at the
+    // right moment rather than getting buried under everything else.
+    const crossroadsEvent = checkWonderkidCrossroads(player, club.rating);
+    const event = crossroadsEvent || triggerRandomEvent(player);
     if (event) {
       setActiveRandomEvent(event);
     } else {
@@ -409,12 +464,20 @@ function calculateDynamicOvrChange(
     updatedPlayer.totalGoals += sRecord.goals;
     updatedPlayer.totalAssists += sRecord.assists;
     updatedPlayer.avgRatingSum += sRecord.rating;
-    if (sRecord.trophyWon) updatedPlayer.totalTrophies += 1;
+    updatedPlayer.totalTrophies += sRecord.trophiesWon.length;
+
+    // Wind down an active "unsettled" spell one season at a time.
+    if ((updatedPlayer.unsettledSeasonsRemaining ?? 0) > 0) {
+      updatedPlayer.unsettledSeasonsRemaining = (updatedPlayer.unsettledSeasonsRemaining ?? 0) - 1;
+    }
 
     if (bDor.isUserWinner) {
       updatedPlayer.ballonDorsWon += 1;
+      updatedPlayer.ballonDorStreak = (player.ballonDorStreak ?? 0) + 1;
       sRecord.awardsWon.push("Ballon d'Or");
       addTimelineEntry(updatedPlayer, 'AWARD', "BALLON D'OR WINNER!", "Crown world player of the year!");
+    } else {
+      updatedPlayer.ballonDorStreak = 0;
     }
 
     if (gShoe) {
@@ -444,7 +507,7 @@ function calculateDynamicOvrChange(
     const seasonPts =
       sRecord.goals * 100 +
       sRecord.assists * 50 +
-      (sRecord.trophyWon ? 1500 : 0) +
+      (sRecord.trophiesWon.length * 1500) +
       (bDor.isUserWinner ? 5000 : 0) +
       (gShoe ? 1000 : 0) +
       (intRes.trophyWon ? 2000 : 0);
@@ -458,7 +521,7 @@ function calculateDynamicOvrChange(
       {
         goals: sRecord.goals,
         apps: sRecord.apps,
-        trophyWon: sRecord.trophyWon
+        trophiesWon: sRecord.trophiesWon
       },
       bDor,
       intRes,
@@ -486,7 +549,43 @@ function calculateDynamicOvrChange(
     if (!player) return;
     setShowAwardsModal(false);
 
-    const offers = generateClubOffers(player);
+    let currentPlayer = player;
+
+    // Resolve a just-completed loan spell before offers are generated, so
+    // a "STAY" offer (if any) refers to the right club — either the loan
+    // club (if it exercises its option to keep the player) or the parent
+    // club the player returns to.
+    if (currentPlayer.loanParentClub) {
+      const loanClub = getClubByName(currentPlayer.club);
+      const resolution = resolveLoanSpell(currentPlayer, loanClub);
+      const wasLoanClub = currentPlayer.club;
+
+      addTimelineEntry(
+        currentPlayer,
+        'TRANSFER',
+        resolution.keptPermanently ? `Loan Made Permanent — Signed for ${wasLoanClub}` : `Loan Spell Ended — Returned to ${resolution.club}`,
+        resolution.keptPermanently
+          ? `Impressed enough on loan that ${wasLoanClub} triggered the option to make the move permanent.`
+          : `The season-long loan at ${wasLoanClub} concluded, and the move back to ${resolution.club} followed as agreed.`
+      );
+
+      currentPlayer = {
+        ...currentPlayer,
+        club: resolution.club,
+        clubColor: resolution.clubColor,
+        clubSecondaryColor: resolution.clubSecondaryColor,
+        // Made permanent = a new home, tenure starts over there. Returned
+        // to the parent club = tenure was only ever paused, not reset.
+        currentClubTenure: resolution.keptPermanently ? 0 : currentPlayer.currentClubTenure,
+        loanParentClub: undefined,
+        loanParentClubColor: undefined,
+        loanParentClubSecondaryColor: undefined,
+      };
+      setPlayer(currentPlayer);
+      setLocalTimeline([...timelineFeed]);
+    }
+
+    const offers = generateClubOffers(currentPlayer);
     setActiveTransferOffers(offers);
   };
 
@@ -497,24 +596,62 @@ function calculateDynamicOvrChange(
     let updatedClubName = player.club;
     let updatedColor = player.clubColor;
     let updatedSecondaryColor = player.clubSecondaryColor;
+    let nextTenure = player.currentClubTenure ?? 0;
+    let nextUnsettled = player.unsettledSeasonsRemaining ?? 0;
+    let legacyDelta = 0;
 
-    if (offer.type !== 'STAY') {
+    if (offer.type === 'STAY') {
+      nextTenure += 1;
+      const milestone = checkLoyaltyMilestone(nextTenure);
+      legacyDelta += milestone.legacyBonus;
+      addTimelineEntry(
+        player,
+        'MILESTONE',
+        `Contract Extension`,
+        milestone.narrative || `Re-signed with ${player.club} for another season.`
+      );
+    } else if (offer.type === 'LOAN') {
+      // Still contracted to the parent club — tenure there is paused, not
+      // reset, while the loan plays out.
       updatedClubName = offer.club.name;
       updatedColor = offer.club.color;
       updatedSecondaryColor = offer.club.secondaryColor || '#1E1E1E';
+      addTimelineEntry(
+        player,
+        'TRANSFER',
+        `Loan Move to ${offer.club.name}`,
+        `Season-long loan move to ${offer.club.name}. ${offer.description}`
+      );
+    } else {
+      // A real, permanent departure — this is the risky move. Leaving a
+      // club you'd settled at for years is a genuine gamble: it can pay
+      // off spectacularly, or leave you unsettled for seasons, circling
+      // smaller clubs while your reputation quietly erodes.
+      const priorTenure = player.currentClubTenure ?? 0;
+      const risk = rollDepartureRisk(priorTenure, offer.club.rating, player.ovr);
+      updatedClubName = offer.club.name;
+      updatedColor = offer.club.color;
+      updatedSecondaryColor = offer.club.secondaryColor || '#1E1E1E';
+      nextTenure = 0;
+
+      if (priorTenure >= 3) {
+        legacyDelta -= risk.legacyPenalty;
+      }
+      if (risk.unsettled) {
+        nextUnsettled = risk.unsettledSeasons;
+      }
+
+      const departureNarrative = priorTenure >= 3
+        ? (risk.unsettled
+            ? `Walking away from ${player.club} after ${priorTenure} years stung the fans badly, and the move to ${offer.club.name} hasn't gone to plan — it may take a few seasons to find your feet again.`
+            : `Leaving ${player.club} after ${priorTenure} years divided the fanbase, but the fresh start at ${offer.club.name} is already paying off.`)
+        : `Completed contract move to ${offer.club.name} (${offer.label}).`;
 
       addTimelineEntry(
         player,
         'TRANSFER',
         `Transfer to ${offer.club.name}`,
-        `Completed contract move to ${offer.club.name} (${offer.label}).`
-      );
-    } else {
-      addTimelineEntry(
-        player,
-        'MILESTONE',
-        `Contract Extension`,
-        `Re-signed with ${player.club} for another season.`
+        departureNarrative
       );
     }
 
@@ -525,18 +662,33 @@ function calculateDynamicOvrChange(
       club: updatedClubName,
       clubColor: updatedColor,
       clubSecondaryColor: updatedSecondaryColor,
-      isTransferListed: false
+      isTransferListed: false,
+      currentClubTenure: nextTenure,
+      unsettledSeasonsRemaining: nextUnsettled,
+      // A LOAN offer sends the player out for exactly one season — track
+      // where they came from so resolveLoanSpell() can send them back (or
+      // make it permanent) once that season is played.
+      loanParentClub: offer.type === 'LOAN' ? player.club : undefined,
+      loanParentClubColor: offer.type === 'LOAN' ? player.clubColor : undefined,
+      loanParentClubSecondaryColor: offer.type === 'LOAN' ? player.clubSecondaryColor : undefined,
     };
 
     setPlayer(nextPlayer);
     setActiveTransferOffers(null);
     setLocalTimeline([...timelineFeed]);
+    if (legacyDelta !== 0) {
+      setLegacyScore(prev => Math.max(0, prev + legacyDelta));
+    }
 
-    saveToAutoSave(nextPlayer, legacyScore, ancestors);
+    saveToAutoSave(nextPlayer, legacyScore + legacyDelta, ancestors);
 
     // Check forced retirement rule
     if (nextPlayer.age >= 46 || (nextPlayer.age >= 33 && nextPlayer.ovr < 66)) {
-      setShowRetirementModal(true);
+      if (nextPlayer.isLegendMode || nextPlayer.gameMode === 'LEGEND') {
+        setShowLegendComparison(true);
+      } else {
+        setShowRetirementModal(true);
+      }
     }
   };
 
@@ -550,7 +702,10 @@ function calculateDynamicOvrChange(
     setShowAwardsModal(false);
     setActiveTransferOffers(null);
     setShowRetirementModal(false);
-    setShowCreationModal(true);
+    setShowLegendComparison(false);
+    setShowCreationModal(false);
+    setPlayer(null);
+    setShowMainMenuModal(true);
   };
 
   // 9. Handle Quick Fire Continue As Child
@@ -613,7 +768,11 @@ function calculateDynamicOvrChange(
   // 10. Handle Retirement & Child Generation
   const handleRetireClick = () => {
     sound.playTap();
-    setShowRetirementModal(true);
+    if (player?.isLegendMode || player?.gameMode === 'LEGEND') {
+      setShowLegendComparison(true);
+    } else {
+      setShowRetirementModal(true);
+    }
   };
 
   const handleProceedToChildCreation = () => {
@@ -663,7 +822,9 @@ function calculateDynamicOvrChange(
     setNewsFeed([]);
     setLeagues(LEAGUES_2026);
     setSuperstars(INITIAL_SUPERSTARS);
-    setShowCreationModal(true);
+    setShowCreationModal(false);
+    setShowLegendComparison(false);
+    setShowMainMenuModal(true);
   };
 
   // 10. Load Save Slot
@@ -822,9 +983,30 @@ function calculateDynamicOvrChange(
       {showRetirementModal && player && (
         <RetirementModal
           player={player}
-          legacyScore={legacyScore}
           onProceedToChild={handleProceedToChildCreation}
-          onClose={() => setShowRetirementModal(false)}
+        />
+      )}
+
+      {/* Main Menu Modal */}
+      {showMainMenuModal && (
+        <MainMenuModal
+          onSelectStandardCareer={() => {
+            setShowMainMenuModal(false);
+            setShowCreationModal(true);
+          }}
+          onSelectQuickFireCareer={() => {
+            setShowMainMenuModal(false);
+            setShowCreationModal(true);
+          }}
+          onSelectLegendCareer={handleSelectLegendCareer}
+        />
+      )}
+
+      {/* Legend Mode Retirement Comparison Modal */}
+      {showLegendComparison && player && (
+        <LegendComparisonModal
+          player={player}
+          onReturnToMainMenu={handleReturnToMainMenu}
         />
       )}
     </div>

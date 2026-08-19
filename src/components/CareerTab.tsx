@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Player, TimelineEntry } from '../types';
 import { Globe, Award, History, Clock } from 'lucide-react';
+import { formatOvr } from '../utils/format';
 
 interface CareerTabProps {
   player: Player;
@@ -195,7 +196,7 @@ export const CareerTab: React.FC<CareerTabProps> = ({ player, timelineFeed }) =>
                   <div className="flex items-center justify-between border-b border-white/5 pb-1.5 mb-1.5">
                     <span className="font-bold text-[#F1C40F] font-mono">{s.year} (Age {s.age})</span>
                     <span className="font-bold text-white italic font-serif">{s.club}</span>
-                    <span className="text-[10px] text-[#2ECC71] font-mono font-bold">{s.oldOvr} ➔ {s.newOvr} OVR</span>
+                    <span className="text-[10px] text-[#2ECC71] font-mono font-bold">{formatOvr(s.oldOvr)} ➔ {formatOvr(s.newOvr)} OVR</span>
                   </div>
                   <div className="grid grid-cols-4 gap-1 text-center text-[10px] text-white/50 font-mono">
                     <div>Apps: <span className="text-white font-bold">{s.apps}</span></div>
@@ -203,9 +204,13 @@ export const CareerTab: React.FC<CareerTabProps> = ({ player, timelineFeed }) =>
                     <div>Assists: <span className="text-cyan-400 font-bold">{s.assists}</span></div>
                     <div>Rating: <span className="text-[#F1C40F] font-bold">{s.rating}</span></div>
                   </div>
-                  {s.trophyWon && (
-                    <div className="mt-1.5 text-[10px] text-[#F1C40F] font-semibold bg-[#F1C40F]/10 px-2 py-0.5 rounded border border-[#F1C40F]/20">
-                      🏆 {s.trophyWon}
+                  {s.trophiesWon && s.trophiesWon.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {s.trophiesWon.map((t, ti) => (
+                        <div key={ti} className="text-[10px] text-[#F1C40F] font-semibold bg-[#F1C40F]/10 px-2 py-0.5 rounded border border-[#F1C40F]/20">
+                          🏆 {t}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>

@@ -68,6 +68,11 @@ export const TransferModal: React.FC<TransferModalProps> = ({
                         SISTER NETWORK
                       </span>
                     )}
+                    {offer.type === 'LOAN' && (
+                      <span className="text-[9px] bg-[#F1C40F]/20 text-[#F1C40F] border border-[#F1C40F]/40 px-1.5 py-0.5 rounded font-mono font-bold uppercase">
+                        LOAN — 1 YEAR
+                      </span>
+                    )}
                   </div>
                   <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded bg-[#1E1E1E] text-[#2ECC71] border border-white/5">
                     {offer.club.rating} OVR

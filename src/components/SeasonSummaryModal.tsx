@@ -1,6 +1,7 @@
 import React from 'react';
 import { SeasonRecord, Player } from '../types';
 import { Trophy, TrendingUp, Sparkles, Award } from 'lucide-react';
+import { formatOvr, formatOvrDelta } from '../utils/format';
 import { sound } from '../utils/audio';
 
 interface SeasonSummaryModalProps {
@@ -57,7 +58,7 @@ export const SeasonSummaryModal: React.FC<SeasonSummaryModalProps> = ({
           <div>
             <span className="text-white/40 text-[9px] font-bold uppercase block">DEVELOPMENT CHANGE</span>
             <span className="font-bold font-mono text-white text-sm">
-              {seasonRecord.oldOvr} ➔ {seasonRecord.newOvr} OVR
+              {formatOvr(seasonRecord.oldOvr)} ➔ {formatOvr(seasonRecord.newOvr)} OVR
             </span>
           </div>
           <span className={`text-xs font-black font-mono px-2.5 py-1 rounded-lg ${
@@ -65,17 +66,19 @@ export const SeasonSummaryModal: React.FC<SeasonSummaryModalProps> = ({
               ? 'bg-[#2ECC71]/20 text-[#2ECC71] border border-[#2ECC71]/40' 
               : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
           }`}>
-            {seasonRecord.ovrChange >= 0 ? `+${seasonRecord.ovrChange}` : seasonRecord.ovrChange} OVR
+            {formatOvrDelta(seasonRecord.ovrChange)} OVR
           </span>
         </div>
 
-        {/* 🏆 TROPHY WON */}
-        {seasonRecord.trophyWon && (
+        {/* 🏆 TROPHIES WON */}
+        {seasonRecord.trophiesWon && seasonRecord.trophiesWon.length > 0 && (
           <div className="bg-[#F1C40F]/10 border border-[#F1C40F]/30 p-3 rounded-xl flex items-center space-x-3 text-xs">
             <Trophy className="w-6 h-6 text-[#F1C40F] shrink-0" />
             <div>
-              <div className="font-bold text-[#F1C40F]">Silverware Champions!</div>
-              <div className="text-[10px] text-white/50">Won the {seasonRecord.trophyWon}!</div>
+              <div className="font-bold text-[#F1C40F]">
+                {seasonRecord.trophiesWon.length > 1 ? `${seasonRecord.trophiesWon.length}-Trophy Season!` : 'Silverware Champions!'}
+              </div>
+              <div className="text-[10px] text-white/50">Won the {seasonRecord.trophiesWon.join(', ')}!</div>
             </div>
           </div>
         )}

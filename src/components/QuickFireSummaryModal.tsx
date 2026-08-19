@@ -2,6 +2,7 @@ import React from 'react';
 import { Player, QuickFireSummaryData } from '../types';
 import { Trophy, Star, Award, Flame, UserCheck, Home, RotateCcw, ChevronRight, Globe, Shield, Sparkles } from 'lucide-react';
 import { sound } from '../utils/audio';
+import { formatOvr } from '../utils/format';
 
 interface QuickFireSummaryModalProps {
   player: Player;
@@ -59,7 +60,7 @@ export const QuickFireSummaryModal: React.FC<QuickFireSummaryModalProps> = ({
               CAREER GRADE: {summary.careerRating}
             </div>
             <div className="bg-[#1E1E1E] px-3 py-1.5 rounded-xl border border-white/10 text-xs font-bold font-mono text-[#2ECC71]">
-              {summary.peakOvr} PEAK OVR
+              {formatOvr(summary.peakOvr)} PEAK OVR
             </div>
           </div>
         </div>

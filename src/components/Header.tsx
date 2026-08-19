@@ -1,6 +1,7 @@
 import React from 'react';
 import { Player } from '../types';
 import { googlePlayBilling } from '../utils/googlePlayBilling';
+import { formatOvr } from '../utils/format';
 
 interface HeaderProps {
   player: Player | null;
@@ -49,7 +50,7 @@ export const Header: React.FC<HeaderProps> = ({ player, legacyScore }) => {
             <span className="text-xs font-bold text-[#2ECC71]">{player.position}</span>
             <span className="text-xs text-white/30">•</span>
             <span className="text-sm font-black font-mono text-white">
-              {player.ovr} <span className="text-[9px] text-white/40 font-normal">OVR</span>
+              {formatOvr(player.ovr)} <span className="text-[9px] text-white/40 font-normal">OVR</span>
             </span>
           </div>
         )}

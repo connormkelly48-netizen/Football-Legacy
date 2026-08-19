@@ -3,6 +3,7 @@ import { League, WorldHeadlinePackage, Player, Superstar, Club } from '../types'
 import { Globe, TrendingUp, Newspaper, Trophy, Shield, Building, Network, Search, DollarSign, UserCheck } from 'lucide-react';
 import { MULTI_CLUB_GROUPS } from '../data/database2026';
 import { dynamicClubs } from '../data/world';
+import { formatOvr } from '../utils/format';
 
 interface WorldTabProps {
   player: Player;
@@ -315,7 +316,7 @@ export const WorldTab: React.FC<WorldTabProps> = ({ player, leagues, newsFeed, s
                 >
                   <div className="flex items-center space-x-3">
                     <div className="w-8 h-8 rounded-lg bg-[#2A2A2A] border border-white/10 flex items-center justify-center font-black font-mono text-xs text-[#2ECC71]">
-                      {star.ovr}
+                      {formatOvr(star.ovr)}
                     </div>
                     <div>
                       <div className="font-bold text-white flex items-center space-x-2">
@@ -333,7 +334,7 @@ export const WorldTab: React.FC<WorldTabProps> = ({ player, leagues, newsFeed, s
                   </div>
 
                   <div className="text-right">
-                    <span className="text-[10px] font-mono font-bold text-[#F1C40F]">Peak {star.peakOvr}</span>
+                    <span className="text-[10px] font-mono font-bold text-[#F1C40F]">Peak {formatOvr(star.peakOvr)}</span>
                   </div>
                 </div>
               ))}
@@ -364,7 +365,7 @@ export const WorldTab: React.FC<WorldTabProps> = ({ player, leagues, newsFeed, s
                         Retired at Age {star.age} ({star.retiredYear ? `Year ${star.retiredYear}` : ''}) • Last Club: {star.club}
                       </div>
                     </div>
-                    <span className="text-[10px] font-mono font-bold text-white/40">Peak {star.peakOvr} OVR</span>
+                    <span className="text-[10px] font-mono font-bold text-white/40">Peak {formatOvr(star.peakOvr)} OVR</span>
                   </div>
                 ))}
               </div>

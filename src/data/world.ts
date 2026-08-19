@@ -42,7 +42,7 @@ export function updateLeagueReputations(): string[] {
 
 export function generateSeasonHeadlines(
   player: Player,
-  seasonStats: { goals: number; apps: number; trophyWon: string | null },
+  seasonStats: { goals: number; apps: number; trophiesWon: string[] },
   ballonDorResult: BallonDorResult,
   intResult: IntSimResult,
   extraHeadlines: string[] = []
@@ -62,8 +62,10 @@ export function generateSeasonHeadlines(
   // 3. Player Performance Headline
   if (seasonStats.goals >= 30) {
     seasonHeadlines.push(`🔥 UNSTOPPABLE: ${player.name} finished the season with an incredible ${seasonStats.goals} goals for ${player.club}!`);
-  } else if (seasonStats.trophyWon) {
-    seasonHeadlines.push(`🏆 CHAMPIONS: ${player.name} led ${player.club} to ${seasonStats.trophyWon} silverware!`);
+  } else if (seasonStats.trophiesWon.length > 1) {
+    seasonHeadlines.push(`🏆🏆 ${seasonStats.trophiesWon.length}-TROPHY SEASON: ${player.name} led ${player.club} to a stunning haul — ${seasonStats.trophiesWon.join(', ')}!`);
+  } else if (seasonStats.trophiesWon.length === 1) {
+    seasonHeadlines.push(`🏆 CHAMPIONS: ${player.name} led ${player.club} to ${seasonStats.trophiesWon[0]} silverware!`);
   } else {
     seasonHeadlines.push(`⚽ SEASON CONCLUDED: ${player.name} registered ${seasonStats.apps} appearances for ${player.club}.`);
   }

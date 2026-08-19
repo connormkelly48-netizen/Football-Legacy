@@ -1,18 +1,19 @@
 import { Player, Superstar, Position } from '../types';
+import { CLUBS_2026 } from './database2026';
 
 export const INITIAL_SUPERSTARS: Superstar[] = [
-  { id: "mbappe", name: "Kylian Mbappé", club: "Real Madrid", ovr: 91, pos: "ST", age: 27, peakOvr: 94, nationality: "France" },
-  { id: "haaland", name: "Erling Haaland", club: "Manchester City", ovr: 90, pos: "ST", age: 26, peakOvr: 94, nationality: "Norway" },
-  { id: "vini", name: "Vinícius Júnior", club: "Real Madrid", ovr: 89, pos: "LW", age: 26, peakOvr: 92, nationality: "Brazil" },
-  { id: "bellingham", name: "Jude Bellingham", club: "Real Madrid", ovr: 88, pos: "CAM", age: 23, peakOvr: 93, nationality: "England" },
-  { id: "yamal", name: "Lamine Yamal", club: "FC Barcelona", ovr: 87, pos: "RW", age: 19, peakOvr: 95, nationality: "Spain" },
-  { id: "wirtz", name: "Florian Wirtz", club: "Bayer Leverkusen", ovr: 87, pos: "CAM", age: 23, peakOvr: 92, nationality: "Germany" },
-  { id: "musiala", name: "Jamal Musiala", club: "Bayern Munich", ovr: 87, pos: "CAM", age: 23, peakOvr: 93, nationality: "Germany" },
-  { id: "rodri", name: "Rodri", club: "Manchester City", ovr: 89, pos: "CDM", age: 30, peakOvr: 90, nationality: "Spain" },
-  { id: "lautaro", name: "Lautaro Martínez", club: "Inter Milan", ovr: 87, pos: "ST", age: 28, peakOvr: 89, nationality: "Argentina" },
-  { id: "kane", name: "Harry Kane", club: "Bayern Munich", ovr: 88, pos: "ST", age: 32, peakOvr: 90, nationality: "England" },
-  { id: "salah", name: "Mohamed Salah", club: "Liverpool", ovr: 87, pos: "RW", age: 34, peakOvr: 90, nationality: "Egypt" },
-  { id: "debruyne", name: "Kevin De Bruyne", club: "Manchester City", ovr: 87, pos: "CM", age: 34, peakOvr: 91, nationality: "Belgium" }
+  { id: "mbappe", name: "Kylian Mbappé", club: "Real Madrid", ovr: 91, pos: "ST", age: 27, peakOvr: 94, nationality: "France", loyalty: 0.35, yearsAtClub: 1 },
+  { id: "haaland", name: "Erling Haaland", club: "Manchester City", ovr: 90, pos: "ST", age: 26, peakOvr: 94, nationality: "Norway", loyalty: 0.55, yearsAtClub: 3 },
+  { id: "vini", name: "Vinícius Júnior", club: "Real Madrid", ovr: 89, pos: "LW", age: 26, peakOvr: 92, nationality: "Brazil", loyalty: 0.55, yearsAtClub: 6 },
+  { id: "bellingham", name: "Jude Bellingham", club: "Real Madrid", ovr: 88, pos: "CAM", age: 23, peakOvr: 93, nationality: "England", loyalty: 0.45, yearsAtClub: 2 },
+  { id: "yamal", name: "Lamine Yamal", club: "FC Barcelona", ovr: 87, pos: "RW", age: 19, peakOvr: 95, nationality: "Spain", loyalty: 0.75, yearsAtClub: 2 },
+  { id: "wirtz", name: "Florian Wirtz", club: "Bayer Leverkusen", ovr: 87, pos: "CAM", age: 23, peakOvr: 92, nationality: "Germany", loyalty: 0.4, yearsAtClub: 4 },
+  { id: "musiala", name: "Jamal Musiala", club: "Bayern Munich", ovr: 87, pos: "CAM", age: 23, peakOvr: 93, nationality: "Germany", loyalty: 0.85, yearsAtClub: 5 },
+  { id: "rodri", name: "Rodri", club: "Manchester City", ovr: 89, pos: "CDM", age: 30, peakOvr: 90, nationality: "Spain", loyalty: 0.6, yearsAtClub: 5 },
+  { id: "lautaro", name: "Lautaro Martínez", club: "Inter Milan", ovr: 87, pos: "ST", age: 28, peakOvr: 89, nationality: "Argentina", loyalty: 0.65, yearsAtClub: 5 },
+  { id: "kane", name: "Harry Kane", club: "Bayern Munich", ovr: 88, pos: "ST", age: 32, peakOvr: 90, nationality: "England", loyalty: 0.4, yearsAtClub: 2 },
+  { id: "salah", name: "Mohamed Salah", club: "Liverpool", ovr: 87, pos: "RW", age: 34, peakOvr: 90, nationality: "Egypt", loyalty: 0.6, yearsAtClub: 8 },
+  { id: "debruyne", name: "Kevin De Bruyne", club: "Manchester City", ovr: 87, pos: "CM", age: 34, peakOvr: 91, nationality: "Belgium", loyalty: 0.5, yearsAtClub: 9 }
 ];
 
 const NAMES_BY_NATION: Record<string, { first: string[]; last: string[] }> = {
@@ -82,7 +83,125 @@ export function generateNewGenSuperstar(year: number): Superstar {
     age,
     peakOvr,
     nationality,
-    isRegen: true
+    isRegen: true,
+    loyalty: 0.2 + Math.random() * 0.6, // 0.2-0.8, randomized per player
+    yearsAtClub: 0
+  };
+}
+
+/** Mirrors rollAgeRandomComponent in quickfireEngine.ts — same system, applied to NPCs. */
+function rollSuperstarAgeRandom(age: number): number {
+  if (age <= 22) return Math.floor(Math.random() * 13) - 5;   // -5 to +7
+  if (age <= 25) return Math.floor(Math.random() * 11) - 5;   // -5 to +5
+  if (age <= 32) return Math.floor(Math.random() * 7) - 3;    // -3 to +3
+  return Math.floor(Math.random() * 11) - 7;                  // -7 to +3
+}
+
+/**
+ * Superstars don't have a per-match simulation like the player, so this
+ * substitutes a "how the season generally went" signal based on how much
+ * room they have below their own peak — still genuinely random, not a
+ * guaranteed trend either direction.
+ *
+ * Includes regression-to-mean pressure: sustaining true elite form (86+)
+ * gets progressively harder the longer the streak runs. Without this, a
+ * player who reaches their peak by their mid-20s could plausibly just
+ * hover there through their entire prime with nothing pushing them back
+ * down — which doesn't match reality. A Messi/Ronaldo-length decade of
+ * uninterrupted world-class form is meant to be a genuine outlier, not
+ * the median outcome for a top player.
+ */
+function computeSuperstarPerformanceComponent(currentOvr: number, peakOvr: number, eliteStreak: number): number {
+  const room = peakOvr - currentOvr;
+  let base: number;
+  if (room > 5) base = Math.floor(Math.random() * 3);              // 0 to +2, plenty of room to still improve
+  else if (room >= 0) base = Math.floor(Math.random() * 3) - 1;    // -1 to +1, at/near their peak
+  else base = -(Math.floor(Math.random() * 2) + 1);                // -1 to -2, already past their real peak
+
+  if (currentOvr >= 86 && eliteStreak > 3) {
+    base -= Math.min(3, Math.floor((eliteStreak - 3) / 2) + 1);
+  }
+
+  return base;
+}
+
+interface SuperstarEventRoll {
+  component: number;
+  headline: string | null;
+}
+
+/**
+ * Same category of event system as the player (see rollCareerEvent in
+ * quickfireEngine.ts) — including a serious-injury or fallout-with-club
+ * possibility for ANY superstar, at ANY point in their career. This is
+ * deliberate: a 10-15 year Messi/Ronaldo-style duel at the top is a
+ * once-in-a-generation outcome, not the default. Without real risk of
+ * disruption, the same handful of names would dominate the Ballon d'Or
+ * conversation identically in every single save.
+ */
+function rollSuperstarEvent(star: Superstar): SuperstarEventRoll {
+  const isNearPeak = star.ovr >= star.peakOvr - 2;
+  const severeChance = isNearPeak ? 0.03 : 0.015;
+  const roll = Math.random();
+  let cumulative = severeChance;
+
+  if (roll < cumulative) {
+    const penalty = Math.floor(Math.random() * 6) + 5; // 5-10, permanent
+    return {
+      component: -penalty,
+      headline: `💥 SHOCK BLOW: ${star.name} suffers a serious injury that could define the rest of their career.`,
+    };
+  }
+  cumulative += 0.05;
+  if (roll < cumulative) {
+    return {
+      component: -(Math.floor(Math.random() * 3) + 2), // -2 to -4
+      headline: `🤕 SETBACK: ${star.name} battles fitness problems through a disrupted season.`,
+    };
+  }
+  cumulative += 0.025;
+  if (roll < cumulative) {
+    // Falling out with the club — a real, if rare, career disruption distinct from injury.
+    return {
+      component: -(Math.floor(Math.random() * 3) + 1), // -1 to -3
+      headline: `⚠️ TENSION: Reports emerge of a rift between ${star.name} and ${star.club} that's affecting form.`,
+    };
+  }
+  cumulative += 0.06;
+  if (roll < cumulative) {
+    return {
+      component: Math.floor(Math.random() * 3) + 3, // +3 to +5
+      headline: `⭐ BREAKOUT: ${star.name} produces the form of their career this season.`,
+    };
+  }
+  return { component: 0, headline: null };
+}
+
+/**
+ * Rolls whether this superstar transfers this season, and to where.
+ * Wanderlust rises with time at the current club and falls with loyalty;
+ * older players get a "one last adventure" bump. Destination is picked
+ * from the real club database, weighted toward clubs whose rating roughly
+ * matches the player's level.
+ */
+function rollSuperstarTransfer(star: Superstar): { newClub: string; headline: string } | null {
+  const loyalty = star.loyalty ?? 0.5;
+  const tenure = star.yearsAtClub ?? 0;
+  let chance = 0.025 + tenure * 0.008 - loyalty * 0.05;
+  if (star.age >= 32) chance += 0.025; // late-career "one last adventure" moves
+  chance = Math.max(0.008, Math.min(0.3, chance));
+
+  if (Math.random() >= chance) return null;
+
+  const candidates = CLUBS_2026.filter(c =>
+    c.name !== star.club && Math.abs(c.rating - star.ovr) <= 10
+  );
+  if (candidates.length === 0) return null;
+
+  const destination = candidates[Math.floor(Math.random() * candidates.length)];
+  return {
+    newClub: destination.name,
+    headline: `🔄 TRANSFER: ${star.name} completes a move to ${destination.name}!`,
   };
 }
 
@@ -95,28 +214,15 @@ export function advanceSuperstars(
     if (star.isRetired) return star;
 
     const newAge = star.age + 1;
-    let newOvr = star.ovr;
 
-    if (newAge <= 22) {
-      const growth = Math.floor(Math.random() * 3) + 1;
-      newOvr = Math.min(star.peakOvr, star.ovr + growth);
-    } else if (newAge <= 29) {
-      if (star.ovr < star.peakOvr) {
-        newOvr += Math.floor(Math.random() * 2);
-      } else {
-        const delta = Math.floor(Math.random() * 3) - 1;
-        newOvr = Math.min(star.peakOvr + 1, Math.max(82, star.ovr + delta));
-      }
-    } else if (newAge <= 32) {
-      const decline = Math.floor(Math.random() * 2);
-      newOvr = Math.max(75, star.ovr - decline);
-    } else if (newAge <= 34) {
-      const decline = Math.floor(Math.random() * 2) + 1;
-      newOvr = Math.max(70, star.ovr - decline);
-    } else {
-      const decline = Math.floor(Math.random() * 3) + 2;
-      newOvr = Math.max(62, star.ovr - decline);
-    }
+    const randomComponent = rollSuperstarAgeRandom(newAge);
+    const eliteStreak = star.ovr >= 86 ? (star.eliteStreak ?? 0) + 1 : 0;
+    const performanceComponent = computeSuperstarPerformanceComponent(star.ovr, star.peakOvr, eliteStreak);
+    const eventRoll = rollSuperstarEvent(star);
+    if (eventRoll.headline) retirementHeadlines.push(eventRoll.headline);
+
+    const delta = randomComponent + performanceComponent + eventRoll.component;
+    let newOvr = Math.max(55, Math.min(99, star.ovr + delta));
 
     const shouldRetire =
       newAge >= 37 ||
@@ -136,17 +242,40 @@ export function advanceSuperstars(
       };
     }
 
+    // Transfer roll — happens after the injury/event roll so a player
+    // who just fell out with their club is more narratively primed to
+    // actually leave (their transfer chance isn't directly boosted by the
+    // event, but the two showing up in the same season reads naturally).
+    const transferResult = rollSuperstarTransfer({ ...star, age: newAge, ovr: newOvr });
+    if (transferResult) {
+      retirementHeadlines.push(transferResult.headline);
+      return {
+        ...star,
+        age: newAge,
+        ovr: newOvr,
+        club: transferResult.newClub,
+        yearsAtClub: 0,
+        eliteStreak
+      };
+    }
+
     return {
       ...star,
       age: newAge,
-      ovr: newOvr
+      ovr: newOvr,
+      eliteStreak,
+      yearsAtClub: (star.yearsAtClub ?? 0) + 1
     };
   });
 
   const activeCount = updatedSuperstars.filter(s => !s.isRetired && s.ovr >= 82).length;
 
-  if (activeCount < 9) {
-    const numToGenerate = Math.min(3, 10 - activeCount);
+  // Floor raised from the original 9/10 — a deeper pool of genuine
+  // contenders means an elite user player is racing a bigger field every
+  // season, not a small fixed handful of names, which was part of why a
+  // sufficiently high-OVR player could dominate the vote almost every year.
+  if (activeCount < 12) {
+    const numToGenerate = Math.min(3, 13 - activeCount);
     for (let i = 0; i < numToGenerate; i++) {
       const regen = generateNewGenSuperstar(currentYear);
       updatedSuperstars.push(regen);
@@ -379,11 +508,29 @@ export function calculateBallonDor(
 
   // Calculate User Player Score
   const trophyBonus = (seasonStats.trophyWon ? 30 : 0) + (seasonStats.intTrophyWon ? 50 : 0);
-  const userScore = (player.ovr * 3.5) + 
-                    (seasonStats.avgRating * 18) + 
-                    (seasonStats.goals * 1.5) + 
-                    (seasonStats.assists * 1.0) + 
-                    trophyBonus;
+
+  // "Voter fatigue" — real Ballon d'Or voters spread the award around even
+  // among genuine all-time greats; nobody wins it 8-9 years running. Each
+  // consecutive prior win makes this season's vote harder to win, capping
+  // out at a steep penalty so a dominant run naturally breaks itself up.
+  const priorStreak = player.ballonDorStreak ?? 0;
+  const fatiguePenalty = Math.min(0.40, priorStreak * 0.10);
+
+  // Same scale of season-to-season randomness the NPC contenders get
+  // (Math.random() * 20 - 10) — without this the user's score was a near-
+  // deterministic function of their stats, so a truly elite, consistent
+  // player could out-score the entire NPC field almost every single
+  // season purely on lower variance, not on actually having the better
+  // year. Real award races have genuine unpredictable swing.
+  const userNoise = Math.random() * 20 - 10;
+
+  const rawUserScore = (player.ovr * 3.3) +
+                    (seasonStats.avgRating * 20) +
+                    (seasonStats.goals * 1.5) +
+                    (seasonStats.assists * 1.0) +
+                    trophyBonus +
+                    userNoise;
+  const userScore = rawUserScore * (1 - fatiguePenalty);
 
   // Strict Threshold Check:
   // Must be 78+ OVR OR have a generational breakout score to qualify for Ballon d'Or votes.
